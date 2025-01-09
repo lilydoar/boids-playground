@@ -1,23 +1,34 @@
 const std = @import("std");
-const testing = std.testing;
-
 const sdl = @cImport({
     @cInclude("SDL3/SDL.h");
 });
+
+const Boid = @import("boid.zig");
+const Flock = @import("flock.zig");
+const Vec2 = @import("math.zig").Vec2;
 
 pub fn run() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
+    var prng = std.rand.DefaultPrng.init(0);
+    const rand = prng.random();
     if (!sdl.SDL_SetAppMetadata("Boids", "0.0.1", "com.lilydoar.boids"))
         return error.SDL_SetAppMetadata;
 
+    // SDL initialization
     if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO))
         return error.SDL_INIT_VIDEO;
     defer sdl.SDL_Quit();
 
-    const window = sdl.SDL_CreateWindow("Boids", 600, 600, 0) orelse
+    const window_size = 800;
+    const window = sdl.SDL_CreateWindow(
+        "Boids",
+        window_size,
+        window_size,
+        0,
+    ) orelse
         return error.SDL_CreateWindowAndRenderer;
     defer sdl.SDL_DestroyWindow(window);
 
@@ -25,31 +36,31 @@ pub fn run() !void {
         return error.SDL_CreateRenderer;
     defer sdl.SDL_DestroyRenderer(renderer);
 
-    const vert = try alloc.alloc(sdl.SDL_Vertex, 3);
+    // Flock initialization
+    const boid_size = 10.0;
+    var flock = Flock.init(alloc, .{
+        .boid_size = boid_size,
+        .max_speed = boid_size * 0.8,
 
-    // center
-    vert[0].position.x = 400;
-    vert[0].position.y = 150;
-    vert[0].color.r = 1.0;
-    vert[0].color.g = 0.0;
-    vert[0].color.b = 0.0;
-    vert[0].color.a = 1.0;
+        .separation_distance = boid_size * 2.2,
+        .cohesion_distance = boid_size * 8.0,
 
-    // left
-    vert[1].position.x = 200;
-    vert[1].position.y = 450;
-    vert[1].color.r = 0.0;
-    vert[1].color.g = 0.0;
-    vert[1].color.b = 1.0;
-    vert[1].color.a = 1.0;
+        .separation_strength = 1.4,
+        .cohesion_strength = 0.6,
+        .alignment_strength = 0.8,
+    });
+    defer flock.deinit();
 
-    // right
-    vert[2].position.x = 800;
-    vert[2].position.y = 450;
-    vert[2].color.r = 0.0;
-    vert[2].color.g = 1.0;
-    vert[2].color.b = 0.0;
-    vert[2].color.a = 1.0;
+    const flock_count = 200;
+    for (0..flock_count) |_| {
+        try flock.boids.append(.{
+            .pos = Vec2.rand_pos(rand, window_size / 2.0),
+            .vel = Vec2.rand_dir(rand).scale(flock.desc.max_speed),
+        });
+    }
+
+    var flock_render = Flock.Renderer.init(alloc);
+    defer flock_render.deinit();
 
     var running = true;
     while (running) {
@@ -66,13 +77,24 @@ pub fn run() !void {
             }
         }
 
+        // Update
+        for (flock.boids.items) |*boid| {
+            boid.accumulate(flock);
+        }
+        for (flock.boids.items) |*boid| {
+            boid.integrate(0.01, flock.desc.max_speed);
+        }
+
         // Rendering
         if (!sdl.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255))
             return error.SDL_SetRenderDrawColor;
         if (!sdl.SDL_RenderClear(renderer))
             return error.SDL_RenderClear;
-        if (!sdl.SDL_RenderGeometry(renderer, null, vert.ptr, 3, null, 0))
-            return error.SDL_RenderGeometry;
+
+        const origin = Vec2{ .x = window_size / 2.0, .y = window_size / 2.0 };
+        const color = .{ .r = 255, .g = 255, .b = 255, .a = 255 };
+        try flock_render.render(renderer, flock, origin, boid_size, color);
+
         if (!sdl.SDL_RenderPresent(renderer))
             return error.SDL_RenderPresent;
     }
