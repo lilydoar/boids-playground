@@ -38,22 +38,35 @@ pub fn run() !void {
     defer sdl.SDL_DestroyRenderer(renderer);
 
     // Flock initialization
+    const flock_count = 1000;
     const boid_size = 10.0;
+    const boundary_padding = boid_size / 2.0;
+
     var flock = Flock.init(alloc, .{
         .boid_size = boid_size,
         .boid_color = .{ .r = 255, .g = 255, .b = 255, .a = 255 },
+
         .max_speed = boid_size * 0.8,
+        .boundary = .{
+            .min = .{
+                .x = -window_size / 2.0 - boundary_padding,
+                .y = -window_size / 2.0 - boundary_padding,
+            },
+            .max = .{
+                .x = window_size / 2.0 + boundary_padding,
+                .y = window_size / 2.0 + boundary_padding,
+            },
+        },
 
         .separation_distance = boid_size * 2.2,
-        .cohesion_distance = boid_size * 8.0,
+        .separation_strength = 1.6,
 
-        .separation_strength = 1.4,
+        .cohesion_distance = boid_size * 8.0,
         .cohesion_strength = 0.6,
         .alignment_strength = 0.8,
     });
     defer flock.deinit();
 
-    const flock_count = 200;
     for (0..flock_count) |_| {
         try flock.boids.append(.{
             .pos = Vec2.rand_pos(rand, window_size / 2.0),
@@ -62,7 +75,10 @@ pub fn run() !void {
     }
 
     const origin = .{ .x = window_size / 2.0, .y = window_size / 2.0 };
-    var render = Render.init(alloc, origin, &flock);
+    const opts = .{
+        .boundary_color = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
+    };
+    var render = Render.init(alloc, origin, &flock, opts);
     defer render.deinit();
 
     var running = true;
@@ -86,6 +102,7 @@ pub fn run() !void {
         }
         for (flock.boids.items) |*boid| {
             boid.integrate(0.01, flock.desc.max_speed);
+            boid.wrap(flock.desc.boundary);
         }
 
         // Rendering

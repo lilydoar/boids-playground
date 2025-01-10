@@ -4,19 +4,23 @@ const sdl = @cImport({
 });
 
 const Boid = @import("boid.zig");
-const Vec2 = @import("math.zig").Vec2;
+const math = @import("math.zig");
+const AABB = math.AABB;
+const Vec2 = math.Vec2;
 
 const Self = @This();
 
-const FlockDesc = struct {
+pub const FlockDesc = struct {
     boid_size: f32,
     boid_color: sdl.SDL_FColor,
+
     max_speed: f32,
+    boundary: AABB,
 
     separation_distance: f32,
-    cohesion_distance: f32,
-
     separation_strength: f32,
+
+    cohesion_distance: f32,
     cohesion_strength: f32,
     alignment_strength: f32,
 };

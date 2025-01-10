@@ -99,3 +99,28 @@ pub const Vec2 = struct {
         };
     }
 };
+
+pub const AABB = struct {
+    min: Vec2,
+    max: Vec2,
+
+    pub fn contains(self: AABB, pos: Vec2) bool {
+        return pos.x >= self.min.x and pos.x <= self.max.x and
+            pos.y >= self.min.y and pos.y <= self.max.y;
+    }
+
+    pub fn closest_point(self: AABB, pos: Vec2) Vec2 {
+        return Vec2{
+            .x = clamp(pos.x, self.min.x, self.max.x),
+            .y = clamp(pos.y, self.min.y, self.max.y),
+        };
+    }
+};
+
+pub fn clamp(value: f32, min: f32, max: f32) f32 {
+    return @min(@max(value, min), max);
+}
+
+pub fn jitter(random: std.rand.Random, value: f32, amount: f32) f32 {
+    return value + (random.float(f32) - 0.5) * amount;
+}
