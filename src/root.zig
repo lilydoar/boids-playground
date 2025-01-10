@@ -5,6 +5,7 @@ const sdl = @cImport({
 
 const Boid = @import("boid.zig");
 const Flock = @import("flock.zig");
+const Render = @import("render.zig");
 const Vec2 = @import("math.zig").Vec2;
 
 pub fn run() !void {
@@ -40,6 +41,7 @@ pub fn run() !void {
     const boid_size = 10.0;
     var flock = Flock.init(alloc, .{
         .boid_size = boid_size,
+        .boid_color = .{ .r = 255, .g = 255, .b = 255, .a = 255 },
         .max_speed = boid_size * 0.8,
 
         .separation_distance = boid_size * 2.2,
@@ -59,8 +61,9 @@ pub fn run() !void {
         });
     }
 
-    var flock_render = Flock.Renderer.init(alloc);
-    defer flock_render.deinit();
+    const origin = .{ .x = window_size / 2.0, .y = window_size / 2.0 };
+    var render = Render.init(alloc, origin, &flock);
+    defer render.deinit();
 
     var running = true;
     while (running) {
@@ -91,9 +94,7 @@ pub fn run() !void {
         if (!sdl.SDL_RenderClear(renderer))
             return error.SDL_RenderClear;
 
-        const origin = Vec2{ .x = window_size / 2.0, .y = window_size / 2.0 };
-        const color = .{ .r = 255, .g = 255, .b = 255, .a = 255 };
-        try flock_render.render(renderer, flock, origin, boid_size, color);
+        try render.draw(renderer);
 
         if (!sdl.SDL_RenderPresent(renderer))
             return error.SDL_RenderPresent;
