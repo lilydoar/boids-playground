@@ -38,9 +38,16 @@ pub fn run() !void {
     defer sdl.SDL_DestroyRenderer(renderer);
 
     // Flock initialization
-    const flock_count = 1000;
+    const origin = .{
+        .x = window_size / 2.0,
+        .y = window_size / 2.0,
+    };
+    const flock_count = 10;
     const boid_size = 10.0;
     const boundary_padding = boid_size / 2.0;
+    const draw_opts = .{
+        .boundary_color = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
+    };
 
     var flock = Flock.init(alloc, .{
         .boid_size = boid_size,
@@ -74,11 +81,7 @@ pub fn run() !void {
         });
     }
 
-    const origin = .{ .x = window_size / 2.0, .y = window_size / 2.0 };
-    const opts = .{
-        .boundary_color = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
-    };
-    var render = Render.init(alloc, origin, &flock, opts);
+    var render = Render.init(alloc, origin, &flock, draw_opts);
     defer render.deinit();
 
     var running = true;
@@ -97,6 +100,8 @@ pub fn run() !void {
         }
 
         // Update
+        try flock.quadtree.build(flock.boids.items);
+
         for (flock.boids.items) |*boid| {
             boid.accumulate(flock);
         }

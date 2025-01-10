@@ -104,6 +104,27 @@ pub const AABB = struct {
     min: Vec2,
     max: Vec2,
 
+    pub fn center(self: AABB) Vec2 {
+        return Vec2{
+            .x = (self.min.x + self.max.x) / 2.0,
+            .y = (self.min.y + self.max.y) / 2.0,
+        };
+    }
+
+    pub fn dimensions(self: AABB) Vec2 {
+        return Vec2{
+            .x = self.max.x - self.min.x,
+            .y = self.max.y - self.min.y,
+        };
+    }
+
+    pub fn overlaps(self: AABB, other: AABB) bool {
+        return self.min.x <= other.max.x and
+            self.max.x >= other.min.x and
+            self.min.y <= other.max.y and
+            self.max.y >= other.min.y;
+    }
+
     pub fn contains(self: AABB, pos: Vec2) bool {
         return pos.x >= self.min.x and pos.x <= self.max.x and
             pos.y >= self.min.y and pos.y <= self.max.y;
@@ -113,6 +134,26 @@ pub const AABB = struct {
         return Vec2{
             .x = clamp(pos.x, self.min.x, self.max.x),
             .y = clamp(pos.y, self.min.y, self.max.y),
+        };
+    }
+
+    pub fn quadrant(self: AABB, index: usize) AABB {
+        const c = self.center();
+        return AABB{
+            .min = switch (index) {
+                0 => self.min,
+                1 => Vec2{ .x = c.x, .y = self.min.y },
+                2 => Vec2{ .x = self.min.x, .y = c.y },
+                3 => c,
+                else => unreachable,
+            },
+            .max = switch (index) {
+                0 => c,
+                1 => Vec2{ .x = self.max.x, .y = self.min.y },
+                2 => Vec2{ .x = self.min.x, .y = c.y },
+                3 => self.max,
+                else => unreachable,
+            },
         };
     }
 };
