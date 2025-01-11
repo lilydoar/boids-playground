@@ -40,4 +40,5 @@ pub fn init(alloc: std.mem.Allocator, desc: FlockDesc) Self {
 }
 pub fn deinit(self: Self) void {
     self.boids.deinit();
+    self.quadtree.deinit();
 }

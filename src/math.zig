@@ -137,6 +137,11 @@ pub const AABB = struct {
         };
     }
 
+    // Return a sub-AABB corresponding to a quadrant of the AABB:
+    // 0: top-left
+    // 1: top-right
+    // 2: bottom-left
+    // 3: bottom-right
     pub fn quadrant(self: AABB, index: usize) AABB {
         const c = self.center();
         return AABB{
@@ -149,8 +154,8 @@ pub const AABB = struct {
             },
             .max = switch (index) {
                 0 => c,
-                1 => Vec2{ .x = self.max.x, .y = self.min.y },
-                2 => Vec2{ .x = self.min.x, .y = c.y },
+                1 => Vec2{ .x = self.max.x, .y = c.y },
+                2 => Vec2{ .x = c.x, .y = self.max.y },
                 3 => self.max,
                 else => unreachable,
             },

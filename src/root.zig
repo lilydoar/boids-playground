@@ -42,11 +42,12 @@ pub fn run() !void {
         .x = window_size / 2.0,
         .y = window_size / 2.0,
     };
-    const flock_count = 10;
+    const flock_count = 400;
     const boid_size = 10.0;
     const boundary_padding = boid_size / 2.0;
     const draw_opts = .{
         .boundary_color = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
+        .quadtree_color = .{ .r = 0, .g = 255, .b = 0, .a = 255 },
     };
 
     var flock = Flock.init(alloc, .{
@@ -65,12 +66,12 @@ pub fn run() !void {
             },
         },
 
-        .separation_distance = boid_size * 2.2,
+        .separation_distance = boid_size * 2.0,
         .separation_strength = 1.6,
 
-        .cohesion_distance = boid_size * 8.0,
+        .cohesion_distance = boid_size * 6.0,
         .cohesion_strength = 0.6,
-        .alignment_strength = 0.8,
+        .alignment_strength = 0.5,
     });
     defer flock.deinit();
 
@@ -79,9 +80,10 @@ pub fn run() !void {
             .pos = Vec2.rand_pos(rand, window_size / 2.0),
             .vel = Vec2.rand_dir(rand).scale(flock.desc.max_speed),
         });
+        flock.boids.items[flock.boids.items.len - 1].wrap(flock.desc.boundary);
     }
 
-    var render = Render.init(alloc, origin, &flock, draw_opts);
+    var render = Render.init(alloc, renderer, origin, &flock, draw_opts);
     defer render.deinit();
 
     var running = true;
@@ -116,7 +118,7 @@ pub fn run() !void {
         if (!sdl.SDL_RenderClear(renderer))
             return error.SDL_RenderClear;
 
-        try render.draw(renderer);
+        try render.draw();
 
         if (!sdl.SDL_RenderPresent(renderer))
             return error.SDL_RenderPresent;

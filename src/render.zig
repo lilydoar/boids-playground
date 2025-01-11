@@ -18,8 +18,10 @@ const BASE_TRIANGLE = [3]Vec2{
 
 pub const DrawOpts = struct {
     boundary_color: sdl.SDL_FColor,
+    quadtree_color: sdl.SDL_FColor,
 };
 
+renderer: *sdl.SDL_Renderer,
 origin: Vec2,
 flock: *Flock,
 opts: DrawOpts,
@@ -29,11 +31,13 @@ rects: std.ArrayList(sdl.SDL_FRect),
 
 pub fn init(
     alloc: std.mem.Allocator,
+    renderer: *sdl.SDL_Renderer,
     origin: Vec2,
     flock: *Flock,
     opts: DrawOpts,
 ) Self {
     return Self{
+        .renderer = renderer,
         .origin = origin,
         .flock = flock,
         .opts = opts,
@@ -47,18 +51,35 @@ pub fn deinit(self: Self) void {
     self.rects.deinit();
 }
 
-pub fn draw(
-    self: *Self,
-    renderer: *sdl.SDL_Renderer,
-) !void {
-    self.tris.clearRetainingCapacity();
-    self.rects.clearRetainingCapacity();
-
+pub fn draw(self: *Self) !void {
     try self.draw_flock();
     try self.draw_boundary();
+    try self.draw_quadtree();
+}
+
+fn draw_flock(self: *Self) !void {
+    self.tris.clearRetainingCapacity();
+
+    for (self.flock.boids.items) |boid| {
+        const pos = boid.pos;
+        const dir = boid.vel.normalize();
+        const color = self.flock.desc.boid_color;
+
+        inline for (BASE_TRIANGLE) |point| {
+            const p = point
+                .scale(self.flock.desc.boid_size)
+                .rotate(dir)
+                .add(pos)
+                .add(self.origin);
+            try self.tris.append(sdl.SDL_Vertex{
+                .position = .{ .x = p.x, .y = p.y },
+                .color = color,
+            });
+        }
+    }
 
     if (!sdl.SDL_RenderGeometry(
-        renderer,
+        self.renderer,
         null,
         self.tris.items.ptr,
         @intCast(self.tris.items.len),
@@ -66,54 +87,57 @@ pub fn draw(
         0,
     ))
         return error.SDL_RenderGeometry;
-
-    if (!sdl.SDL_SetRenderDrawColor(
-        renderer,
-        @intFromFloat(self.opts.boundary_color.r),
-        @intFromFloat(self.opts.boundary_color.g),
-        @intFromFloat(self.opts.boundary_color.b),
-        @intFromFloat(self.opts.boundary_color.a),
-    ))
-        return error.SDL_SetRenderDrawColor;
-
-    if (!sdl.SDL_RenderRects(
-        renderer,
-        self.rects.items.ptr,
-        @intCast(self.rects.items.len),
-    ))
-        return error.SDL_RenderRects;
-}
-
-fn draw_flock(self: *Self) !void {
-    for (self.flock.boids.items) |boid| {
-        const pos = boid.pos;
-        const dir = boid.vel.normalize();
-        const color = self.flock.desc.boid_color;
-
-        const p0 = BASE_TRIANGLE[0].scale(self.flock.desc.boid_size).rotate(dir).add(pos).add(self.origin);
-        const p1 = BASE_TRIANGLE[1].scale(self.flock.desc.boid_size).rotate(dir).add(pos).add(self.origin);
-        const p2 = BASE_TRIANGLE[2].scale(self.flock.desc.boid_size).rotate(dir).add(pos).add(self.origin);
-
-        try self.tris.append(sdl.SDL_Vertex{
-            .position = .{ .x = p0.x, .y = p0.y },
-            .color = color,
-        });
-        try self.tris.append(sdl.SDL_Vertex{
-            .position = .{ .x = p1.x, .y = p1.y },
-            .color = color,
-        });
-        try self.tris.append(sdl.SDL_Vertex{
-            .position = .{ .x = p2.x, .y = p2.y },
-            .color = color,
-        });
-    }
 }
 
 fn draw_boundary(self: *Self) !void {
+    self.rects.clearRetainingCapacity();
+
     try self.rects.append(sdl.SDL_FRect{
         .x = self.flock.desc.boundary.min.x + self.origin.x,
         .y = self.flock.desc.boundary.min.y + self.origin.y,
         .w = self.flock.desc.boundary.max.x - self.flock.desc.boundary.min.x,
         .h = self.flock.desc.boundary.max.y - self.flock.desc.boundary.min.y,
     });
+
+    try self.set_draw_color(self.opts.boundary_color);
+
+    if (!sdl.SDL_RenderRects(
+        self.renderer,
+        self.rects.items.ptr,
+        @intCast(self.rects.items.len),
+    ))
+        return error.SDL_RenderRects;
+}
+
+fn draw_quadtree(self: *Self) !void {
+    self.rects.clearRetainingCapacity();
+
+    for (self.flock.quadtree.nodes.items) |node| {
+        try self.rects.append(sdl.SDL_FRect{
+            .x = node.bounds.min.x + self.origin.x,
+            .y = node.bounds.min.y + self.origin.y,
+            .w = node.bounds.max.x - node.bounds.min.x,
+            .h = node.bounds.max.y - node.bounds.min.y,
+        });
+    }
+
+    try self.set_draw_color(self.opts.quadtree_color);
+
+    if (!sdl.SDL_RenderRects(
+        self.renderer,
+        self.rects.items.ptr,
+        @intCast(self.rects.items.len),
+    ))
+        return error.SDL_RenderRects;
+}
+
+fn set_draw_color(self: *Self, color: sdl.SDL_FColor) !void {
+    if (!sdl.SDL_SetRenderDrawColor(
+        self.renderer,
+        @intFromFloat(color.r),
+        @intFromFloat(color.g),
+        @intFromFloat(color.b),
+        @intFromFloat(color.a),
+    ))
+        return error.SDL_SetRenderDrawColor;
 }

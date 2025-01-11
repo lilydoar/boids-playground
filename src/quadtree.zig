@@ -11,12 +11,14 @@ const AABB = math.AABB;
 
 const Node = struct {
     bounds: AABB,
-
-    // FIXME: I think this could be a union since a node only ever has children
-    // or indices
-    children: ?usize = null,
-    start: ?usize = null,
-    count: ?usize = null,
+    contents: union(enum) {
+        empty,
+        children: usize,
+        items: struct {
+            start: usize,
+            len: usize,
+        },
+    },
 };
 
 const Self = @This();
@@ -49,10 +51,14 @@ pub fn build(self: *Self, boids: []Boid) !void {
         try self.indices.append(i);
     }
 
-    try self.nodes.append(.{
+    try self.nodes.append(Node{
         .bounds = self.bounds,
-        .start = 0,
-        .count = self.indices.items.len,
+        .contents = .{
+            .items = .{
+                .start = 0,
+                .len = self.indices.items.len,
+            },
+        },
     });
     try build_rec(self, 0, 0, boids);
 }
@@ -63,97 +69,136 @@ fn build_rec(
     depth: usize,
     boids: []Boid,
 ) !void {
-    const node = self.nodes.items[node_index];
+    if (depth >= max_depth) return;
 
-    if (depth >= max_depth or node.count.? <= max_per_node) {
-        return;
-    }
+    switch (self.nodes.items[node_index].contents) {
+        .empty => return,
+        .children => unreachable,
+        .items => |item| {
+            if (item.len <= max_per_node) return;
 
-    // Create children
-    self.nodes.items[node_index].children = self.nodes.items.len;
-    for (0..4) |i| {
-        try self.nodes.append(Node{
-            .bounds = node.bounds.quadrant(i),
-            .start = 0,
-            .count = 0,
-        });
-    }
+            // Point node at children
+            self.nodes.items[node_index].contents = .{
+                .children = self.nodes.items.len,
+            };
+            const children = self.nodes.items[node_index].contents.children;
+            const bounds = self.nodes.items[node_index].bounds;
 
-    // Partition boid indices into quadrants
-    var partitions = [_]usize{ node.start.?, 0, 0, 0 };
-    var counts = [_]usize{ 0, 0, 0, 0 };
+            // Create children nodes
+            inline for (0..4) |i| {
+                try self.nodes.append(Node{
+                    .bounds = bounds.quadrant(i),
+                    .contents = .empty,
+                });
+            }
 
-    const center = node.bounds.center();
+            // Partition items among the children
+            const center = bounds.center();
 
-    // TODO: Extract the partitioning into a function
+            // Quadrant 0
+            var start = item.start;
+            var left = item.start;
+            var right = item.start + item.len;
 
-    // Partition entities, maintaining the invariant that:
-    // - Everything before i is in the current quadrant
-    // - Everything after j is in a later quadrant
-    // - Items between i and j are yet to be classified
-    var i = node.start.?;
-    var j = node.start.? + node.count.?;
+            while (left < right) {
+                const idx = self.indices.items[left];
+                const pos = boids[idx].pos;
 
-    // Partition quadrant 0
-    while (i <= j) {
-        const idx = self.indices.items[i];
-        const pos = boids[idx].pos;
-        const quadrant = get_point_quadrant(pos, center);
+                if (get_point_quadrant(pos, center) == 0) {
+                    left += 1;
+                } else {
+                    right -= 1;
+                    swap(self.indices.items, left, right);
+                }
+            }
+            if (left - start > 0) {
+                self.nodes.items[children + 0].contents = .{
+                    .items = .{ .start = start, .len = left - start },
+                };
+            }
 
-        if (quadrant == 0) {
-            i += 1;
-            counts[quadrant] += 1;
-        } else {
-            j -= 1;
-            swap(self.indices.items, i, j);
-        }
-    }
-    partitions[1] = i;
+            // Quadrant 1
+            start = left;
+            right = item.start + item.len;
 
-    // Partition quadrant 1
-    j = node.start.? + node.count.? - 1;
-    while (i <= j) {
-        const idx = self.indices.items[i];
-        const pos = boids[idx].pos;
-        const quadrant = get_point_quadrant(pos, center);
+            while (left < right) {
+                const idx = self.indices.items[left];
+                const pos = boids[idx].pos;
 
-        if (quadrant == 1) {
-            i += 1;
-            counts[quadrant] += 1;
-        } else {
-            j -= 1;
-            swap(self.indices.items, i, j);
-        }
-    }
-    partitions[2] = i;
+                if (get_point_quadrant(pos, center) == 1) {
+                    left += 1;
+                } else {
+                    right -= 1;
+                    swap(self.indices.items, left, right);
+                }
+            }
+            if (left - start > 0) {
+                self.nodes.items[children + 1].contents = .{
+                    .items = .{ .start = start, .len = left - start },
+                };
+            }
 
-    // Partition quadrant 2
-    j = node.start.? + node.count.? - 1;
-    while (i <= j) {
-        const idx = self.indices.items[i];
-        const pos = boids[idx].pos;
-        const quadrant = get_point_quadrant(pos, center);
+            // Quadrant 2
+            start = left;
+            right = item.start + item.len;
 
-        if (quadrant == 2) {
-            i += 1;
-            counts[quadrant] += 1;
-        } else {
-            j -= 1;
-            swap(self.indices.items, i, j);
-        }
-    }
-    partitions[3] = i;
-    counts[3] = node.start.? + node.count.? - i;
+            while (left < right) {
+                const idx = self.indices.items[left];
+                const pos = boids[idx].pos;
 
-    // Setup child ranges and recurse
-    for (0..4) |idx| {
-        const child_index = node.children.? + idx;
-        self.nodes.items[child_index].start = partitions[idx];
-        self.nodes.items[child_index].count = counts[idx];
+                if (get_point_quadrant(pos, center) == 2) {
+                    left += 1;
+                } else {
+                    right -= 1;
+                    swap(self.indices.items, left, right);
+                }
+            }
+            if (left - start > 0) {
+                self.nodes.items[children + 2].contents = .{
+                    .items = .{ .start = start, .len = left - start },
+                };
+            }
 
-        if (self.nodes.items[child_index].count.? > 0) {
-            try build_rec(self, child_index, depth + 1, boids);
-        }
+            // Quadrant 3
+            const len = item.start + item.len - left;
+            start = left;
+
+            if (len > 0) {
+                self.nodes.items[children + 3].contents = .{
+                    .items = .{ .start = start, .len = len },
+                };
+            }
+
+            // Recurse into children
+            switch (self.nodes.items[children + 0].contents) {
+                .empty => {},
+                .children => unreachable,
+                .items => {
+                    try build_rec(self, children + 0, depth + 1, boids);
+                },
+            }
+            switch (self.nodes.items[children + 1].contents) {
+                .empty => {},
+                .children => unreachable,
+                .items => {
+                    try build_rec(self, children + 1, depth + 1, boids);
+                },
+            }
+            switch (self.nodes.items[children + 2].contents) {
+                .empty => {},
+                .children => unreachable,
+                .items => {
+                    try build_rec(self, children + 2, depth + 1, boids);
+                },
+            }
+            switch (self.nodes.items[children + 3].contents) {
+                .empty => {},
+                .children => unreachable,
+                .items => {
+                    try build_rec(self, children + 3, depth + 1, boids);
+                },
+            }
+        },
     }
 }
 
@@ -169,10 +214,11 @@ fn build_rec(
 // };
 // pub fn query(self: *Self, bounds: AABB) QueryIterator {}
 
-fn swap(self: []usize, a: usize, b: usize) void {
-    const temp = self[a];
-    self[a] = self[b];
-    self[b] = temp;
+fn swap(slice: []usize, a: usize, b: usize) void {
+    if (a == b) return;
+    const temp = slice[a];
+    slice[a] = slice[b];
+    slice[b] = temp;
 }
 
 // Returns which quadrant a point lies in relative to a center point:
