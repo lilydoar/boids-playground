@@ -16,31 +16,30 @@ pub fn run() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
+    // Ephemeral memory
+    // Reset every frame
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const scratch = arena.allocator();
+    const ephemeral = arena.allocator();
 
+    // RNG initialization
     var prng = std.rand.DefaultPrng.init(blk: {
         var seed: u64 = undefined;
         try std.posix.getrandom(std.mem.asBytes(&seed));
         break :blk seed;
     });
     const rand = prng.random();
+
+    // SDL initialization
     if (!sdl.SDL_SetAppMetadata("Boids", "0.0.1", "com.lilydoar.boids"))
         return error.SDL_SetAppMetadata;
 
-    // SDL initialization
     if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO))
         return error.SDL_INIT_VIDEO;
     defer sdl.SDL_Quit();
 
-    const window_size = 1100;
-    const window = sdl.SDL_CreateWindow(
-        "Boids",
-        window_size,
-        window_size,
-        0,
-    ) orelse
+    const win_size = 1100;
+    const window = sdl.SDL_CreateWindow("Boids", win_size, win_size, 0) orelse
         return error.SDL_CreateWindowAndRenderer;
     defer sdl.SDL_DestroyWindow(window);
 
@@ -50,8 +49,8 @@ pub fn run() !void {
 
     // Flock initialization
     const origin = Vec2{
-        .x = @as(f32, @floatFromInt(window_size)) / 2.0,
-        .y = @as(f32, @floatFromInt(window_size)) / 2.0,
+        .x = @as(f32, @floatFromInt(win_size)) / 2.0,
+        .y = @as(f32, @floatFromInt(win_size)) / 2.0,
     };
     const flock_size = 400;
     const boid_size = 10.0;
@@ -61,7 +60,7 @@ pub fn run() !void {
     };
     const draw_opts = .{
         .background_col = .{ .r = 64, .g = 64, .b = 64, .a = 255 },
-        .boundary_col = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
+        .boundary_col = .{ .r = 0, .g = 0, .b = 255, .a = 255 },
         .quadtree_col = .{ .r = 0, .g = 255, .b = 0, .a = 255 },
     };
 
@@ -99,10 +98,11 @@ pub fn run() !void {
 
         for (0..flock_size) |_| {
             try flock.boids.append(.{
-                .pos = Vec2.rand_pos(rand, @as(f32, @floatFromInt(window_size)) / 2.0),
+                .pos = Vec2.rand_pos(rand, @min(origin.x, origin.y)),
                 .vel = Vec2.rand_dir(rand).scale(flock.desc.max_speed),
             });
-            flock.boids.items[flock.boids.items.len - 1].wrap(flock.desc.boundary);
+            const idx = flock.boids.items.len - 1;
+            flock.boids.items[idx].wrap(flock.desc.boundary);
         }
 
         try flocks.append(flock);
@@ -133,7 +133,7 @@ pub fn run() !void {
             try flock.quadtree.build(flock.boids.items);
 
             for (flock.boids.items) |*boid| {
-                try boid.accumulate(scratch, flock.*);
+                try boid.accumulate(ephemeral, flock.*);
             }
             for (flock.boids.items) |*boid| {
                 boid.integrate(0.01, flock.desc.max_speed);
