@@ -20,6 +20,9 @@ pub const DrawOpts = struct {
     background_col: sdl.SDL_FColor,
     boundary_col: sdl.SDL_FColor,
     quadtree_col: sdl.SDL_FColor,
+
+    draw_boundary: bool = false,
+    draw_quadtree: bool = false,
 };
 
 renderer: *sdl.SDL_Renderer,
@@ -57,6 +60,8 @@ pub fn draw(self: *Self) !void {
 
     for (self.flocks) |flock| {
         try self.draw_flock(flock);
+        if (self.opts.draw_boundary) try self.draw_boundary(flock);
+        if (self.opts.draw_quadtree) try self.draw_quadtree(flock);
     }
 
     if (!sdl.SDL_RenderPresent(self.renderer))
@@ -109,14 +114,14 @@ fn draw_flock(self: *Self, flock: Flock) !void {
         return error.SDL_RenderGeometry;
 }
 
-fn draw_boundary(self: *Self) !void {
+fn draw_boundary(self: *Self, flock: Flock) !void {
     self.rects.clearRetainingCapacity();
 
     try self.rects.append(sdl.SDL_FRect{
-        .x = self.flocks.desc.boundary.min.x + self.origin.x,
-        .y = self.flocks.desc.boundary.min.y + self.origin.y,
-        .w = self.flocks.desc.boundary.max.x - self.flocks.desc.boundary.min.x,
-        .h = self.flocks.desc.boundary.max.y - self.flocks.desc.boundary.min.y,
+        .x = flock.desc.boundary.min.x + self.origin.x,
+        .y = flock.desc.boundary.min.y + self.origin.y,
+        .w = flock.desc.boundary.max.x - flock.desc.boundary.min.x,
+        .h = flock.desc.boundary.max.y - flock.desc.boundary.min.y,
     });
 
     try self.set_draw_color(self.opts.boundary_col);
@@ -129,10 +134,10 @@ fn draw_boundary(self: *Self) !void {
         return error.SDL_RenderRects;
 }
 
-fn draw_quadtree(self: *Self) !void {
+fn draw_quadtree(self: *Self, flock: Flock) !void {
     self.rects.clearRetainingCapacity();
 
-    for (self.flocks.quadtree.nodes.items) |node| {
+    for (flock.quadtree.nodes.items) |node| {
         try self.rects.append(sdl.SDL_FRect{
             .x = node.bounds.min.x + self.origin.x,
             .y = node.bounds.min.y + self.origin.y,

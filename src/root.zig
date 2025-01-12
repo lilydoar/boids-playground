@@ -62,6 +62,7 @@ pub fn run() !void {
         .background_col = .{ .r = 64, .g = 64, .b = 64, .a = 255 },
         .boundary_col = .{ .r = 0, .g = 0, .b = 255, .a = 255 },
         .quadtree_col = .{ .r = 0, .g = 255, .b = 0, .a = 255 },
+        .draw_quadtree = true,
     };
 
     var flocks = std.ArrayList(Flock).init(alloc);
