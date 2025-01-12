@@ -34,7 +34,7 @@ pub fn run() !void {
         return error.SDL_INIT_VIDEO;
     defer sdl.SDL_Quit();
 
-    const window_size = 1117;
+    const window_size = 1100;
     const window = sdl.SDL_CreateWindow(
         "Boids",
         window_size,
@@ -60,7 +60,7 @@ pub fn run() !void {
         .y = boid_size / 2.0,
     };
     const draw_opts = .{
-        .background_col = .{ .r = 0, .g = 0, .b = 0, .a = 255 },
+        .background_col = .{ .r = 64, .g = 64, .b = 64, .a = 255 },
         .boundary_col = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
         .quadtree_col = .{ .r = 0, .g = 255, .b = 0, .a = 255 },
     };
@@ -71,7 +71,7 @@ pub fn run() !void {
         flocks.deinit();
     }
 
-    const flock_count = 1;
+    const flock_count = 4;
     for (0..flock_count) |_| {
         const boid_color = RGB.from_hsv(HSV.rand_hue(rand, 0.9, 1.0));
         var flock = Flock.init(alloc, .{
