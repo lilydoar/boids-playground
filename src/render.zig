@@ -17,13 +17,14 @@ const BASE_TRIANGLE = [3]Vec2{
 };
 
 pub const DrawOpts = struct {
-    boundary_color: sdl.SDL_FColor,
-    quadtree_color: sdl.SDL_FColor,
+    background_col: sdl.SDL_FColor,
+    boundary_col: sdl.SDL_FColor,
+    quadtree_col: sdl.SDL_FColor,
 };
 
 renderer: *sdl.SDL_Renderer,
 origin: Vec2,
-flock: *Flock,
+flocks: []Flock,
 opts: DrawOpts,
 
 tris: std.ArrayList(sdl.SDL_Vertex),
@@ -33,13 +34,13 @@ pub fn init(
     alloc: std.mem.Allocator,
     renderer: *sdl.SDL_Renderer,
     origin: Vec2,
-    flock: *Flock,
+    flocks: []Flock,
     opts: DrawOpts,
 ) Self {
     return Self{
         .renderer = renderer,
         .origin = origin,
-        .flock = flock,
+        .flocks = flocks,
         .opts = opts,
         .tris = std.ArrayList(sdl.SDL_Vertex).init(alloc),
         .rects = std.ArrayList(sdl.SDL_FRect).init(alloc),
@@ -52,22 +53,41 @@ pub fn deinit(self: Self) void {
 }
 
 pub fn draw(self: *Self) !void {
-    try self.draw_flock();
-    try self.draw_boundary();
-    try self.draw_quadtree();
+    try self.clear();
+
+    for (self.flocks) |flock| {
+        try self.draw_flock(flock);
+    }
+
+    if (!sdl.SDL_RenderPresent(self.renderer))
+        return error.SDL_RenderPresent;
 }
 
-fn draw_flock(self: *Self) !void {
+fn clear(self: *Self) !void {
+    if (!sdl.SDL_SetRenderDrawColor(
+        self.renderer,
+        @intFromFloat(self.opts.background_col.r),
+        @intFromFloat(self.opts.background_col.g),
+        @intFromFloat(self.opts.background_col.b),
+        @intFromFloat(self.opts.background_col.a),
+    ))
+        return error.SDL_SetRenderDrawColor;
+    if (!sdl.SDL_RenderClear(self.renderer))
+        return error.SDL_RenderClear;
+}
+
+fn draw_flock(self: *Self, flock: Flock) !void {
     self.tris.clearRetainingCapacity();
 
-    for (self.flock.boids.items) |boid| {
+    for (flock.boids.items) |boid| {
         const pos = boid.pos;
-        const dir = boid.vel.normalize();
-        const color = self.flock.desc.boid_color;
+        var dir = boid.vel.normalize_safe();
+        if (dir.is_zero()) dir = Vec2{ .x = 1.0, .y = 0.0 };
+        const color = flock.desc.boid_color;
 
         inline for (BASE_TRIANGLE) |point| {
             const p = point
-                .scale(self.flock.desc.boid_size)
+                .scale(flock.desc.boid_size)
                 .rotate(dir)
                 .add(pos)
                 .add(self.origin);
@@ -93,13 +113,13 @@ fn draw_boundary(self: *Self) !void {
     self.rects.clearRetainingCapacity();
 
     try self.rects.append(sdl.SDL_FRect{
-        .x = self.flock.desc.boundary.min.x + self.origin.x,
-        .y = self.flock.desc.boundary.min.y + self.origin.y,
-        .w = self.flock.desc.boundary.max.x - self.flock.desc.boundary.min.x,
-        .h = self.flock.desc.boundary.max.y - self.flock.desc.boundary.min.y,
+        .x = self.flocks.desc.boundary.min.x + self.origin.x,
+        .y = self.flocks.desc.boundary.min.y + self.origin.y,
+        .w = self.flocks.desc.boundary.max.x - self.flocks.desc.boundary.min.x,
+        .h = self.flocks.desc.boundary.max.y - self.flocks.desc.boundary.min.y,
     });
 
-    try self.set_draw_color(self.opts.boundary_color);
+    try self.set_draw_color(self.opts.boundary_col);
 
     if (!sdl.SDL_RenderRects(
         self.renderer,
@@ -112,7 +132,7 @@ fn draw_boundary(self: *Self) !void {
 fn draw_quadtree(self: *Self) !void {
     self.rects.clearRetainingCapacity();
 
-    for (self.flock.quadtree.nodes.items) |node| {
+    for (self.flocks.quadtree.nodes.items) |node| {
         try self.rects.append(sdl.SDL_FRect{
             .x = node.bounds.min.x + self.origin.x,
             .y = node.bounds.min.y + self.origin.y,
@@ -121,7 +141,7 @@ fn draw_quadtree(self: *Self) !void {
         });
     }
 
-    try self.set_draw_color(self.opts.quadtree_color);
+    try self.set_draw_color(self.opts.quadtree_col);
 
     if (!sdl.SDL_RenderRects(
         self.renderer,

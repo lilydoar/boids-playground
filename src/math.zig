@@ -1,4 +1,5 @@
 const std = @import("std");
+const epsilon = std.math.floatEps(f32);
 
 pub const Vec2 = struct {
     x: f32,
@@ -6,6 +7,10 @@ pub const Vec2 = struct {
 
     pub fn zero() Vec2 {
         return Vec2{ .x = 0.0, .y = 0.0 };
+    }
+
+    pub fn one() Vec2 {
+        return Vec2{ .x = 1.0, .y = 1.0 };
     }
 
     /// Return a random vector inside a circle of radius r.
@@ -25,6 +30,10 @@ pub const Vec2 = struct {
             .x = @cos(angle),
             .y = @sin(angle),
         };
+    }
+
+    pub fn is_zero(self: Vec2) bool {
+        return @abs(self.x) < epsilon and @abs(self.y) < epsilon;
     }
 
     pub fn add(self: Vec2, other: Vec2) Vec2 {
@@ -55,10 +64,22 @@ pub const Vec2 = struct {
         };
     }
 
-    pub fn normalize(self: Vec2) Vec2 {
-        const len = @sqrt(self.x * self.x + self.y * self.y);
+    /// Normalize the vector to unit length.
+    /// Panics if the vector is zero.
+    pub fn normalize_unsafe(self: Vec2) Vec2 {
+        const len = self.length();
         std.debug.assert(len != 0.0);
+        return Vec2{
+            .x = self.x / len,
+            .y = self.y / len,
+        };
+    }
 
+    /// Normalize the vector to unit length.
+    /// Returns a zero vector if the vector is zero.
+    pub fn normalize_safe(self: Vec2) Vec2 {
+        const len = self.length();
+        if (len < epsilon) return Vec2{ .x = 0.0, .y = 0.0 };
         return Vec2{
             .x = self.x / len,
             .y = self.y / len,
@@ -132,8 +153,8 @@ pub const AABB = struct {
 
     pub fn closest_point(self: AABB, pos: Vec2) Vec2 {
         return Vec2{
-            .x = clamp(pos.x, self.min.x, self.max.x),
-            .y = clamp(pos.y, self.min.y, self.max.y),
+            .x = std.math.clamp(pos.x, self.min.x, self.max.x),
+            .y = std.math.clamp(pos.y, self.min.y, self.max.y),
         };
     }
 
@@ -162,10 +183,6 @@ pub const AABB = struct {
         };
     }
 };
-
-pub fn clamp(value: f32, min: f32, max: f32) f32 {
-    return @min(@max(value, min), max);
-}
 
 pub fn jitter(random: std.rand.Random, value: f32, amount: f32) f32 {
     return value + (random.float(f32) - 0.5) * amount;

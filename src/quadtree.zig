@@ -163,14 +163,77 @@ fn get_point_quadrant(point: Vec2, center: Vec2) usize {
     return (bottom_bit << 1) | right_bit;
 }
 
-// const QueryIterator = struct {
-//     quadtree: *Self,
-//     region: AABB,
-//     to_check: std.ArrayList(Node),
-//
-//     pub fn next(self: *Self) ?*Boid {
-//         _ = self; // autofix
-//         return null;
-//     }
-// };
-// pub fn query(self: *Self, bounds: AABB) QueryIterator {}
+const QueryIter = struct {
+    quadtree: *const Self,
+    boids: []Boid,
+    bounds: AABB,
+
+    stack: std.ArrayList(usize),
+    curr_items: ?ItemSlice,
+    curr_item: usize,
+
+    pub fn deinit(self: *QueryIter) void {
+        self.stack.deinit();
+    }
+
+    pub fn next(self: *QueryIter) !?usize {
+        if (self.curr_items) |items| {
+            while (self.curr_item < items.start + items.len) {
+                const idx = self.quadtree.indices.items[self.curr_item];
+                self.curr_item += 1;
+
+                const point = self.boids[idx].pos;
+                if (self.bounds.contains(point)) {
+                    return idx;
+                }
+            }
+            self.curr_items = null;
+        }
+
+        while (self.stack.items.len > 0) {
+            const node_idx = self.stack.pop();
+            const node = self.quadtree.nodes.items[node_idx];
+
+            if (!node.bounds.overlaps(self.bounds)) continue;
+
+            switch (node.contents) {
+                .empty => continue,
+                .children => |child_idx| try self.stack.appendSlice(&.{
+                    child_idx + 3,
+                    child_idx + 2,
+                    child_idx + 1,
+                    child_idx + 0,
+                }),
+                .items => |items| {
+                    self.curr_items = items;
+                    self.curr_item = items.start;
+                    return self.next();
+                },
+            }
+        }
+
+        return null;
+    }
+};
+
+pub fn query(
+    self: *const Self,
+    alloc: std.mem.Allocator,
+    boids: []Boid,
+    bounds: AABB,
+) !QueryIter {
+    var stack = std.ArrayList(usize).init(alloc);
+
+    if (self.nodes.items.len > 0) {
+        try stack.append(0);
+    }
+
+    return QueryIter{
+        .quadtree = self,
+        .boids = boids,
+        .bounds = bounds,
+        .stack = stack,
+        .curr_item = 0,
+        .curr_items = null,
+    };
+}
