@@ -6,19 +6,17 @@ const math = @import("math.zig");
 const Vec2 = math.Vec2;
 const AABB = math.AABB;
 
-// This quadtree works by storing indices of items in a list and reordering the
-// indices to match the node structure
-
 const Node = struct {
     bounds: AABB,
     contents: union(enum) {
         empty,
         children: usize,
-        items: struct {
-            start: usize,
-            len: usize,
-        },
+        items: ItemSlice,
     },
+};
+const ItemSlice = struct {
+    start: usize,
+    len: usize,
 };
 
 const Self = @This();
@@ -77,129 +75,92 @@ fn build_rec(
         .items => |item| {
             if (item.len <= max_per_node) return;
 
-            // Point node at children
-            self.nodes.items[node_index].contents = .{
-                .children = self.nodes.items.len,
-            };
-            const children = self.nodes.items[node_index].contents.children;
             const bounds = self.nodes.items[node_index].bounds;
-
-            // Create children nodes
-            inline for (0..4) |i| {
-                try self.nodes.append(Node{
-                    .bounds = bounds.quadrant(i),
-                    .contents = .empty,
-                });
-            }
-
-            // Partition items among the children
             const center = bounds.center();
+            const children = self.nodes.items.len;
 
-            // Quadrant 0
+            // Point node at children
+            self.nodes.items[node_index].contents = .{ .children = children };
+
+            // Partition indices and create children
             var start = item.start;
-            var left = item.start;
-            var right = item.start + item.len;
-
-            while (left < right) {
-                const idx = self.indices.items[left];
-                const pos = boids[idx].pos;
-
-                if (get_point_quadrant(pos, center) == 0) {
-                    left += 1;
-                } else {
-                    right -= 1;
-                    swap(self.indices.items, left, right);
-                }
-            }
-            if (left - start > 0) {
-                self.nodes.items[children + 0].contents = .{
-                    .items = .{ .start = start, .len = left - start },
-                };
+            inline for (0..3) |i| {
+                const end = item.start + item.len;
+                const p = self.partition(i, boids, center, start, end);
+                try create_child_node(self, bounds.quadrant(i), p);
+                start = p.start + p.len;
             }
 
-            // Quadrant 1
-            start = left;
-            right = item.start + item.len;
-
-            while (left < right) {
-                const idx = self.indices.items[left];
-                const pos = boids[idx].pos;
-
-                if (get_point_quadrant(pos, center) == 1) {
-                    left += 1;
-                } else {
-                    right -= 1;
-                    swap(self.indices.items, left, right);
-                }
-            }
-            if (left - start > 0) {
-                self.nodes.items[children + 1].contents = .{
-                    .items = .{ .start = start, .len = left - start },
-                };
-            }
-
-            // Quadrant 2
-            start = left;
-            right = item.start + item.len;
-
-            while (left < right) {
-                const idx = self.indices.items[left];
-                const pos = boids[idx].pos;
-
-                if (get_point_quadrant(pos, center) == 2) {
-                    left += 1;
-                } else {
-                    right -= 1;
-                    swap(self.indices.items, left, right);
-                }
-            }
-            if (left - start > 0) {
-                self.nodes.items[children + 2].contents = .{
-                    .items = .{ .start = start, .len = left - start },
-                };
-            }
-
-            // Quadrant 3
-            const len = item.start + item.len - left;
-            start = left;
-
-            if (len > 0) {
-                self.nodes.items[children + 3].contents = .{
-                    .items = .{ .start = start, .len = len },
-                };
-            }
+            const remaining_len = item.start + item.len - start;
+            try create_child_node(self, bounds.quadrant(3), .{
+                .start = start,
+                .len = remaining_len,
+            });
 
             // Recurse into children
-            switch (self.nodes.items[children + 0].contents) {
-                .empty => {},
-                .children => unreachable,
-                .items => {
-                    try build_rec(self, children + 0, depth + 1, boids);
-                },
-            }
-            switch (self.nodes.items[children + 1].contents) {
-                .empty => {},
-                .children => unreachable,
-                .items => {
-                    try build_rec(self, children + 1, depth + 1, boids);
-                },
-            }
-            switch (self.nodes.items[children + 2].contents) {
-                .empty => {},
-                .children => unreachable,
-                .items => {
-                    try build_rec(self, children + 2, depth + 1, boids);
-                },
-            }
-            switch (self.nodes.items[children + 3].contents) {
-                .empty => {},
-                .children => unreachable,
-                .items => {
-                    try build_rec(self, children + 3, depth + 1, boids);
-                },
+            inline for (0..4) |i| {
+                try build_rec(self, children + i, depth + 1, boids);
             }
         },
     }
+}
+
+fn partition(
+    self: *Self,
+    quadrant: usize,
+    boids: []Boid,
+    center: Vec2,
+    start: usize,
+    end: usize,
+) ItemSlice {
+    var left = start;
+    var right = end;
+
+    while (left < right) {
+        const idx = self.indices.items[left];
+        const pos = boids[idx].pos;
+
+        if (get_point_quadrant(pos, center) == quadrant) {
+            left += 1;
+        } else {
+            right -= 1;
+            swap(self.indices.items, left, right);
+        }
+    }
+
+    return .{
+        .start = start,
+        .len = left - start,
+    };
+}
+
+fn swap(slice: []usize, a: usize, b: usize) void {
+    if (a == b) return;
+    const temp = slice[a];
+    slice[a] = slice[b];
+    slice[b] = temp;
+}
+
+fn create_child_node(
+    self: *Self,
+    bounds: AABB,
+    items: ItemSlice,
+) !void {
+    try self.nodes.append(Node{
+        .bounds = bounds,
+        .contents = if (items.len == 0) .empty else .{ .items = items },
+    });
+}
+
+// Returns which quadrant a point lies in relative to a center point:
+// 0: top-left
+// 1: top-right
+// 2: bottom-left
+// 3: bottom-right
+fn get_point_quadrant(point: Vec2, center: Vec2) usize {
+    const right_bit: usize = @intFromBool(point.x >= center.x);
+    const bottom_bit: usize = @intFromBool(point.y >= center.y);
+    return (bottom_bit << 1) | right_bit;
 }
 
 // const QueryIterator = struct {
@@ -213,24 +174,3 @@ fn build_rec(
 //     }
 // };
 // pub fn query(self: *Self, bounds: AABB) QueryIterator {}
-
-fn swap(slice: []usize, a: usize, b: usize) void {
-    if (a == b) return;
-    const temp = slice[a];
-    slice[a] = slice[b];
-    slice[b] = temp;
-}
-
-// Returns which quadrant a point lies in relative to a center point:
-// 0: top-left
-// 1: top-right
-// 2: bottom-left
-// 3: bottom-right
-fn get_point_quadrant(point: Vec2, center: Vec2) usize {
-    const is_right = point.x >= center.x;
-    const is_bottom = point.y >= center.y;
-    if (!is_right and !is_bottom) return 0; // top-left
-    if (is_right and !is_bottom) return 1; // top-right
-    if (!is_right and is_bottom) return 2; // bottom-left
-    return 3; // bottom-right
-}
