@@ -53,7 +53,7 @@ pub fn run() !void {
         .x = @as(f32, @floatFromInt(window_size)) / 2.0,
         .y = @as(f32, @floatFromInt(window_size)) / 2.0,
     };
-    const flock_size = 200;
+    const flock_size = 400;
     const boid_size = 10.0;
     const boundary_padding = Vec2{
         .x = boid_size / 2.0,
@@ -73,7 +73,7 @@ pub fn run() !void {
 
     const flock_count = 4;
     for (0..flock_count) |_| {
-        const boid_color = RGB.from_hsv(HSV.rand_hue(rand, 0.9, 1.0));
+        const boid_color = RGB.from_hsv(HSV.rand_hue(rand, 0.8, 1.0));
         var flock = Flock.init(alloc, .{
             .boid_size = boid_size,
             .boid_color = .{

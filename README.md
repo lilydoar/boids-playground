@@ -1,3 +1,7 @@
+# Boid Playground
+
+![screenshot](assets/demo.png)
+
 ## Prerequisites
 
 - SDL3 installed on your system
